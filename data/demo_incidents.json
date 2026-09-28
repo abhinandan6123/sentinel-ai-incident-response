@@ -1,7 +1,8 @@
 [
   {
-    "id": "INC-1042",
+    "id": "INC-DEMO-1042",
     "service": "payments-api",
+    "environment": "production",
     "symptom": "Elevated HTTP 502 responses after deployment",
     "logs": "upstream connect error; p95 latency increased from 180ms to 2400ms; 502 rate 18%",
     "deployment": "payments-api v2.8.1 deployed 10 minutes before alert",
@@ -10,13 +11,25 @@
     "runbook": "Check deploy diff, upstream connection pool saturation, and error rate before considering rollback"
   },
   {
-    "id": "INC-1088",
+    "id": "INC-DEMO-1088",
     "service": "payments-api",
+    "environment": "production",
     "symptom": "Recurring HTTP 502 responses under peak traffic",
     "logs": "upstream connect error; connection pool at 100%; p95 latency 2100ms",
     "deployment": "No deployment in the last 2 hours",
-    "root_cause": "Connection pool saturation during traffic spike",
+    "root_cause": "Connection pool saturation during a traffic spike",
     "resolution": "Scaled worker capacity and restored validated pool settings; monitored recovery",
     "runbook": "Compare traffic, pool utilization, and upstream saturation; avoid rollback without a deployment correlation"
+  },
+  {
+    "id": "INC-DEMO-1117",
+    "service": "checkout-api",
+    "environment": "production",
+    "symptom": "Intermittent checkout timeouts and elevated p95 latency",
+    "logs": "dependency response time increased; request timeout rate 12%; p95 latency 3.1s",
+    "deployment": "checkout v4.2.0 deployed earlier today",
+    "root_cause": "Downstream dependency timeout budget was lower than the dependency's normal response time",
+    "resolution": "Aligned timeout configuration with the approved dependency budget and verified checkout smoke tests",
+    "runbook": "Compare service and dependency timeout budgets, inspect downstream latency, then validate recovery with a smoke test"
   }
 ]

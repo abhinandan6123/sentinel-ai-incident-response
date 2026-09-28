@@ -1,74 +1,150 @@
-# Incident Response Agent (Hindsight)
+# Sentinel — Memory-Driven Incident Response
 
-A focused prototype for the official **Incident Response Agent** problem statement. It helps an on-call engineer investigate a recurring incident by recalling prior confirmed incidents from Hindsight.
+**Incident intelligence that remembers what engineers actually confirmed.**
 
-## What it demonstrates
-1. Submit an incident.
-2. Recall related memories from Hindsight.
-3. Generate investigation steps (Groq is optional; a deterministic fallback is included).
-4. Confirm the actual root cause and resolution.
-5. Retain that confirmed outcome in Hindsight.
-6. Submit a similar incident and inspect recalled experience.
+Sentinel is an AI-assisted incident investigation workflow built around **Hindsight agent memory**. It recalls relevant historical incidents, keeps historical evidence separate from AI hypotheses, helps an engineer prioritize diagnostics, and retains only engineer-confirmed outcomes for future incidents.
 
-**Safety:** recommendations only. It does not execute commands or change production systems. Use synthetic/demo data only.
+> **Safety boundary:** Sentinel provides investigation suggestions only. It does not execute commands, roll back deployments, modify infrastructure, or treat memory as proof.
 
-## Requirements
-Python 3.11+, Hindsight Cloud credentials or reachable server, optional Groq API key.
+## Why Sentinel
 
-## Windows PowerShell setup
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+A generic incident assistant starts from the current prompt. An experienced on-call engineer starts with the current evidence **and what the team already learned**.
+
+Sentinel makes that learning loop explicit:
+
+```text
+Incident → Recall → Investigate → Engineer verifies → Retain → Future incident improves
+```
+
+The key demo is a before/after:
+
+- **Cold investigation:** generic diagnostics when no relevant experience exists.
+- **Memory-informed investigation:** a prior confirmed incident is recalled and changes investigation prioritization.
+
+## Stack
+
+- **FastAPI + Pydantic** — API and validation
+- **Hindsight** — persistent operational memory
+- **Groq / OpenAI-compatible API** — optional structured reasoning layer
+- **Deterministic fallback** — keeps the workflow usable when an LLM is unavailable
+- **Vanilla HTML/CSS/JS** — zero-build professional incident console
+- **Pytest** — automated checks
+
+## Local setup
+
+Python 3.11+ is recommended.
+
+```bash
+python -m venv .venv
+source .venv/Scripts/activate  # Git Bash on Windows
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-Copy-Item .env.example .env
+cp .env.example .env
 ```
-Edit `.env`. For local UI testing, keep `DEMO_MODE=true`. For actual Hindsight integration, create a bank in Hindsight Cloud, set `HINDSIGHT_API_KEY`, `HINDSIGHT_BANK_ID`, and `DEMO_MODE=false`.
-```powershell
-python -m app.seed_demo
+
+For a UI-only rehearsal:
+
+```bash
+DEMO_MODE=true uvicorn app.main:app --reload
+```
+
+For the actual Hindsight integration, configure `HINDSIGHT_API_KEY` and `HINDSIGHT_BANK_ID`, set `DEMO_MODE=false`, then run:
+
+```bash
 uvicorn app.main:app --reload
 ```
-Open http://127.0.0.1:8000
 
-## Environment
-- `HINDSIGHT_BASE_URL`: defaults to `https://api.hindsight.vectorize.io`
-- `HINDSIGHT_API_KEY`: required when `DEMO_MODE=false`
-- `HINDSIGHT_BANK_ID`: bank ID created in Hindsight
-- `HINDSIGHT_AUTO_CREATE_BANK`: optional attempt to create bank
-- `GROQ_API_KEY`: optional
-- `GROQ_MODEL`: defaults to `openai/gpt-oss-120b`
-- `DEMO_MODE`: `true` uses local in-memory demo memory; **do not claim this is live Hindsight**
+Open:
 
-## API
-`GET /api/health`, `POST /api/analyze`, `POST /api/resolve`, `POST /api/demo/reset`.
+- App: `http://127.0.0.1:8000`
+- Swagger: `http://127.0.0.1:8000/docs`
+- ReDoc: `http://127.0.0.1:8000/redoc`
+- Health: `http://127.0.0.1:8000/api/health`
 
-## Tests
-```powershell
-pytest -q
+## Environment variables
+
+| Variable | Purpose |
+|---|---|
+| `DEMO_MODE` | Local memory fallback when `true`; set `false` for real Hindsight |
+| `HINDSIGHT_BASE_URL` | Hindsight API base URL |
+| `HINDSIGHT_API_KEY` | Hindsight credential; never commit it |
+| `HINDSIGHT_BANK_ID` | Persistent incident memory bank |
+| `HINDSIGHT_AUTO_CREATE_BANK` | Optional bank creation attempt |
+| `GROQ_API_KEY` | Optional model credential |
+| `GROQ_MODEL` | Model used through Groq's OpenAI-compatible API |
+
+## API surface
+
+### System
+
+`GET /api/health` — service, version, memory provider and LLM configuration.
+
+`GET /api/memory/status` — explicit memory-provider status.
+
+### Incident intelligence
+
+`POST /api/incidents/analyze` — recalls relevant experience and generates hypotheses, evidence signals and an investigation plan.
+
+### Learning
+
+`POST /api/incidents/{incident_id}/resolve` — retains an engineer-confirmed root cause, resolution and recurrence runbook.
+
+### Demo
+
+`POST /api/demo/reset` — clears only local demo memory.
+
+## Hindsight design
+
+Hindsight is not used as a decorative chat-history store. Sentinel retains structured **confirmed incident experience** and recalls it during a later investigation.
+
+The retained record includes:
+
+```text
+Service / environment
+Current evidence
+Confirmed root cause
+Confirmed resolution
+Recurrence runbook
+Outcome
+Verification notes
 ```
 
-## Architecture
-Browser UI → FastAPI → Hindsight recall → analysis → human-confirmed resolution → Hindsight retain.
+See [`docs/HINDSIGHT_EXPLANATION.md`](docs/HINDSIGHT_EXPLANATION.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## Official resources
-- https://hindsight.vectorize.io/
-- https://docs.hindsight.vectorize.io/python-sdk/
-- https://github.com/vectorize-io/hindsight
-- https://groq.com/
+## Testing
 
-The Hindsight SDK evolves; use the current official docs for setup and API changes. The app uses the documented `hindsight-client` interface (`Hindsight`, `create_bank`, `retain`, `recall`).
+```bash
+pytest -q
+python -m compileall app
+```
 
-## Submission-grade workflow assets
-- `docs/HINDSIGHT_EXPLANATION.md` — concise memory architecture and trust boundaries.
-- `docs/DEMO_RUNBOOK.md` — judge demo story and evidence checklist.
-- `docs/RELEASE_CHECKLIST.md` — local QA and submission checklist.
-- `docs/content/` — editable article, social-post, and video-script drafts. Replace placeholders and claims with observed results before publishing.
-- `data/demo_incidents.json` — realistic synthetic incident examples for a repeatable demo.
-- `.github/workflows/tests.yml` — CI test workflow.
-- `Dockerfile` — container build entry point.
+The tests specifically verify that recalled memory changes the investigation plan and that matching incident context receives a stronger relevance signal.
 
-## Important release gate
-This repository is a production-oriented hackathon deliverable, **not a claim of production deployment or verified live integration**. Before submitting, run the application, run `pytest -q`, and prove a real Hindsight retain → recall cycle with `DEMO_MODE=false`. Keep credentials in `.env` or your deployment secret store; never commit them. The local demo mode is process-local and resets when the process restarts.
+## Deployment on Render
 
-## Suggested judge evidence
-Capture (1) health/status showing Hindsight mode, (2) the confirmed incident being retained, (3) a later incident retrieving it, and (4) the memory-informed change to the investigation plan. Do not present synthetic data as a real production incident or claim measured time savings without a measured evaluation.
+A `render.yaml` is included. Set these secrets in Render:
+
+- `HINDSIGHT_API_KEY`
+- `GROQ_API_KEY` (optional)
+
+For a submission claiming Hindsight integration, set `DEMO_MODE=false` and verify a real retain → recall cycle before recording the demo.
+
+## Submission evidence
+
+The official judging model emphasizes innovation, Hindsight memory, technical implementation, UX and real-world impact. The strongest evidence in this repository is therefore the **memory learning loop**, not a generic chatbot response.
+
+Before publishing, add observed screenshots, the live URL, demo video and measured results only if they were actually tested.
+
+## Project docs
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/HINDSIGHT_EXPLANATION.md`](docs/HINDSIGHT_EXPLANATION.md)
+- [`docs/DEMO_RUNBOOK.md`](docs/DEMO_RUNBOOK.md)
+- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md)
+- [`docs/SUBMISSION.md`](docs/SUBMISSION.md)
+
+## Official references
+
+- Hindsight: https://hindsight.vectorize.io/
+- Hindsight GitHub: https://github.com/vectorize-io/hindsight
+- Groq: https://groq.com/

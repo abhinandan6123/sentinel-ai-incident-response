@@ -1,7 +1,1181 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Incident Response Agent</title><style>
-:root{font-family:Inter,system-ui,Segoe UI,sans-serif;color:#eaf0ff;background:#0b1020}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#17284c,#0b1020 45%);min-height:100vh}main{max-width:1100px;margin:auto;padding:28px 18px 60px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}h1{font-size:clamp(28px,5vw,44px);margin:8px 0}.muted{color:#aab8d5}.pill{border:1px solid #334568;border-radius:999px;padding:7px 12px;color:#9fe7cf;font-size:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}.card{background:#111a2e;border:1px solid #263654;border-radius:18px;padding:20px;box-shadow:0 12px 30px #0002}label{display:block;color:#b8c6e0;font-size:13px;margin:13px 0 6px}input,textarea{width:100%;background:#0b1325;color:#f4f7ff;border:1px solid #344664;border-radius:10px;padding:11px;font:inherit}textarea{min-height:88px;resize:vertical}button{border:0;border-radius:10px;padding:11px 15px;background:#76e4c0;color:#061c19;font-weight:750;cursor:pointer;margin-top:14px}button.secondary{background:#263654;color:#eaf0ff}button:disabled{opacity:.5}ul,ol{padding-left:20px;line-height:1.55}.memory{border-left:3px solid #76e4c0;padding:10px 12px;background:#0c1426;border-radius:0 9px 9px 0;margin:10px 0;white-space:pre-wrap}.status{margin-top:12px;color:#f6cf84;white-space:pre-wrap}.actions{display:flex;gap:8px;flex-wrap:wrap}.small{font-size:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}}</style></head><body><main>
-<div class="top"><div><div class="muted">ENGINEERING · DEVOPS</div><h1>Incident Response Agent</h1><div class="muted">An incident assistant that learns from confirmed outcomes.</div></div><div id="mode" class="pill">Checking memory…</div></div>
-<div class="card" style="margin-top:20px"><b>Demo flow</b><p class="muted">Analyze an incident → confirm what actually fixed it → analyze a similar incident and inspect recalled memory. Suggestions are not production actions.</p><div class="actions"><button class="secondary" onclick="fillExample()">Load example incident</button><button class="secondary" onclick="resetDemo()">Reset local demo memory</button></div></div>
-<div class="grid"><section class="card"><h2>1 · New incident</h2><label>Service</label><input id="service" value="Checkout API"><label>Symptom</label><input id="symptom" value="Intermittent 502 Bad Gateway errors after deployment"><label>Environment</label><input id="environment" value="staging"><label>Deployment / change</label><input id="deployment" value="Release checkout-2026.09.28"><label>Logs / evidence</label><textarea id="logs">gateway upstream timeout; 502 rate increased 5 minutes after deployment</textarea><button id="analyzeBtn" onclick="analyzeIncident()">Analyze incident</button><div id="status" class="status"></div></section>
-<section class="card"><h2>2 · Investigation plan</h2><div id="result" class="muted">Submit an incident to see a plan.</div></section><section class="card"><h2>3 · Confirm the outcome</h2><p class="muted small">Only enter the cause and resolution verified in your scenario. These details are retained.</p><label>Confirmed root cause</label><textarea id="cause" placeholder="What actually caused it?"></textarea><label>Confirmed resolution steps</label><textarea id="resolution" placeholder="What fixed it?"></textarea><label>Outcome</label><input id="outcome" value="resolved"><button onclick="resolveIncident()">Retain confirmed outcome</button><div id="retainStatus" class="status"></div></section><section class="card"><h2>4 · Hindsight memory</h2><div id="memories" class="muted">Retrieved memories will appear here.</div></section></div><p class="muted small">Prototype only · Synthetic data recommended · No automated remediation · Verify every recommendation.</p></main>
-<script>let lastIncident=null;async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Request failed');return d}async function init(){try{const h=await api('/api/health');mode.textContent=h.memory_mode==='hindsight'?'Hindsight connected':'LOCAL DEMO MODE';if(h.memory_mode!=='hindsight')mode.style.color='#f6cf84'}catch(e){mode.textContent='API unavailable'}}function values(){return {service:service.value.trim(),symptom:symptom.value.trim(),environment:environment.value.trim(),deployment:deployment.value.trim(),logs:logs.value.trim()}}async function analyzeIncident(){analyzeBtn.disabled=true;status.textContent='Analyzing…';try{lastIncident=await api('/api/analyze',values());result.innerHTML=`<b>${esc(lastIncident.summary)}</b><h3>Likely causes</h3><ul>${lastIncident.likely_causes.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><h3>Investigation steps</h3><ol>${lastIncident.investigation_steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol><p class="small muted">${esc(lastIncident.disclaimer)}</p>`;memories.innerHTML=lastIncident.recalled_memories.length?lastIncident.recalled_memories.map(x=>`<div class="memory">${esc(x)}</div>`).join(''):'No matching memories returned for this incident.';status.textContent=lastIncident.memory_used?'Prior Hindsight memory was returned.':'No prior Hindsight memory shown for this run.'}catch(e){status.textContent=e.message}finally{analyzeBtn.disabled=false}}async function resolveIncident(){if(!lastIncident){retainStatus.textContent='Analyze an incident first.';return}if(!cause.value.trim()||!resolution.value.trim()){retainStatus.textContent='Enter the confirmed root cause and resolution.';return}try{const d=await api('/api/resolve',{incident_id:lastIncident.incident_id,...values(),confirmed_root_cause:cause.value.trim(),resolution_steps:resolution.value.trim(),outcome:outcome.value.trim()});retainStatus.textContent=`Saved to ${d.memory_mode} memory. Now analyze a similar incident.`}catch(e){retainStatus.textContent=e.message}}async function resetDemo(){try{await api('/api/demo/reset',{});status.textContent='Local demo memory reset.';memories.textContent='Memory cleared.'}catch(e){status.textContent=e.message}}function fillExample(){service.value='Checkout API';symptom.value='Intermittent 502 Bad Gateway errors after deployment';environment.value='staging';deployment.value='Release checkout-2026.09.28';logs.value='gateway upstream timeout; 502 rate increased 5 minutes after deployment'}function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}init();</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sentinel — Memory-Driven Incident Response</title>
+
+<style>
+:root{
+  --bg:#070b14;
+  --panel:#0d1422;
+  --panel2:#101a2b;
+  --border:#1e2b42;
+  --text:#edf4ff;
+  --muted:#8494ae;
+  --accent:#62e6c0;
+  --accent2:#65a8ff;
+  --warning:#f4c96b;
+  --danger:#ff7d8a;
+  --success:#61df9b;
+  --shadow:0 20px 60px rgba(0,0,0,.28);
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  color:var(--text);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:
+    radial-gradient(circle at 80% -10%,rgba(54,107,180,.22),transparent 34%),
+    radial-gradient(circle at 10% 30%,rgba(44,181,151,.08),transparent 28%),
+    var(--bg);
+  min-height:100vh;
+}
+
+button,input,textarea{font:inherit}
+
+button{cursor:pointer}
+
+.shell{
+  width:min(1440px,calc(100% - 36px));
+  margin:auto;
+  padding:28px 0 70px;
+}
+
+/* HEADER */
+
+.header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:24px;
+  padding:8px 0 26px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:13px;
+}
+
+.logo{
+  width:42px;
+  height:42px;
+  border:1px solid rgba(98,230,192,.45);
+  border-radius:13px;
+  display:grid;
+  place-items:center;
+  color:var(--accent);
+  background:rgba(98,230,192,.08);
+  box-shadow:0 0 35px rgba(98,230,192,.08);
+  font-weight:900;
+}
+
+.brand-name{
+  font-size:18px;
+  font-weight:800;
+  letter-spacing:.2px;
+}
+
+.brand-sub{
+  color:var(--muted);
+  font-size:11px;
+  margin-top:2px;
+  letter-spacing:.9px;
+  text-transform:uppercase;
+}
+
+.memory-status{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:9px 13px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:rgba(13,20,34,.72);
+  font-size:12px;
+  color:#cbd7e9;
+}
+
+.dot{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 12px var(--accent);
+}
+
+/* HERO */
+
+.hero{
+  padding:30px 0 25px;
+}
+
+.eyebrow{
+  color:var(--accent);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:1.8px;
+  text-transform:uppercase;
+}
+
+.hero h1{
+  margin:10px 0 12px;
+  max-width:850px;
+  font-size:clamp(35px,5vw,64px);
+  line-height:1.02;
+  letter-spacing:-2.5px;
+}
+
+.hero h1 span{
+  color:var(--accent);
+}
+
+.hero p{
+  max-width:780px;
+  margin:0;
+  color:var(--muted);
+  font-size:15px;
+  line-height:1.7;
+}
+
+/* FLOW */
+
+.flow{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+  margin:20px 0 24px;
+}
+
+.flow-step{
+  border:1px solid var(--border);
+  background:rgba(13,20,34,.7);
+  border-radius:14px;
+  padding:13px 15px;
+}
+
+.flow-step.active{
+  border-color:rgba(98,230,192,.35);
+  background:rgba(98,230,192,.045);
+}
+
+.flow-num{
+  color:var(--accent);
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:1px;
+}
+
+.flow-title{
+  margin-top:4px;
+  font-weight:700;
+  font-size:13px;
+}
+
+.flow-desc{
+  color:var(--muted);
+  font-size:11px;
+  margin-top:3px;
+}
+
+/* GRID */
+
+.main-grid{
+  display:grid;
+  grid-template-columns:390px 1fr;
+  gap:16px;
+  align-items:start;
+}
+
+.card{
+  background:linear-gradient(145deg,rgba(16,26,43,.96),rgba(10,16,28,.96));
+  border:1px solid var(--border);
+  border-radius:18px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+
+.card-head{
+  padding:17px 19px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+}
+
+.card-title{
+  font-size:13px;
+  font-weight:800;
+  letter-spacing:.2px;
+}
+
+.card-label{
+  color:var(--muted);
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:1.1px;
+}
+
+.card-body{
+  padding:18px;
+}
+
+label{
+  display:block;
+  color:#aebdd2;
+  font-size:11px;
+  margin:0 0 7px;
+}
+
+.field{
+  margin-bottom:15px;
+}
+
+input,textarea{
+  width:100%;
+  color:var(--text);
+  background:#080f1b;
+  border:1px solid #24344e;
+  border-radius:10px;
+  padding:11px 12px;
+  outline:none;
+  transition:.18s;
+}
+
+input:focus,textarea:focus{
+  border-color:rgba(98,230,192,.55);
+  box-shadow:0 0 0 3px rgba(98,230,192,.06);
+}
+
+textarea{
+  min-height:92px;
+  resize:vertical;
+  line-height:1.5;
+}
+
+.actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.btn{
+  border:0;
+  border-radius:10px;
+  padding:11px 15px;
+  font-size:12px;
+  font-weight:800;
+  transition:.15s;
+}
+
+.btn-primary{
+  color:#031813;
+  background:var(--accent);
+}
+
+.btn-primary:hover{
+  transform:translateY(-1px);
+  box-shadow:0 8px 25px rgba(98,230,192,.15);
+}
+
+.btn-secondary{
+  color:#dbe7f8;
+  background:#172238;
+  border:1px solid #273854;
+}
+
+.btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.status{
+  min-height:20px;
+  margin-top:12px;
+  color:var(--warning);
+  font-size:11px;
+  line-height:1.5;
+}
+
+/* RIGHT */
+
+.results{
+  display:grid;
+  gap:16px;
+}
+
+.summary{
+  padding:18px 20px;
+}
+
+.summary-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:start;
+  gap:15px;
+}
+
+.incident-id{
+  color:var(--muted);
+  font-size:10px;
+  font-family:ui-monospace,monospace;
+  margin-top:5px;
+}
+
+.badge{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:5px 9px;
+  font-size:10px;
+  font-weight:800;
+  border:1px solid var(--border);
+}
+
+.badge-memory{
+  color:var(--accent);
+  background:rgba(98,230,192,.07);
+  border-color:rgba(98,230,192,.25);
+}
+
+.badge-cold{
+  color:var(--warning);
+  background:rgba(244,201,107,.06);
+  border-color:rgba(244,201,107,.2);
+}
+
+.summary h2{
+  margin:0;
+  font-size:19px;
+}
+
+.summary-text{
+  color:#aab8cc;
+  font-size:12px;
+  line-height:1.6;
+  margin-top:12px;
+}
+
+/* HYPOTHESES */
+
+.hypotheses{
+  display:grid;
+  gap:10px;
+}
+
+.hypothesis{
+  border:1px solid var(--border);
+  border-radius:13px;
+  padding:14px;
+  background:rgba(7,12,21,.5);
+}
+
+.hypothesis.memory-backed{
+  border-color:rgba(98,230,192,.35);
+  background:linear-gradient(110deg,rgba(98,230,192,.055),rgba(7,12,21,.5));
+}
+
+.hypothesis-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.hypothesis-title{
+  font-size:13px;
+  font-weight:750;
+}
+
+.priority{
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.8px;
+  padding:4px 7px;
+  border-radius:5px;
+  text-transform:uppercase;
+}
+
+.priority.high{
+  color:#ffb2b9;
+  background:rgba(255,125,138,.09);
+}
+
+.priority.medium{
+  color:#f4d58b;
+  background:rgba(244,201,107,.08);
+}
+
+.rationale{
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.55;
+  margin-top:8px;
+}
+
+.support-row{
+  display:flex;
+  gap:7px;
+  margin-top:10px;
+  flex-wrap:wrap;
+}
+
+.micro{
+  font-size:9px;
+  border:1px solid #253650;
+  color:#8fa1bb;
+  border-radius:5px;
+  padding:4px 6px;
+}
+
+.micro.memory{
+  color:var(--accent);
+  border-color:rgba(98,230,192,.25);
+}
+
+/* TWO COLUMNS */
+
+.two-col{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px;
+}
+
+/* MEMORY */
+
+.memory-card{
+  border:1px solid rgba(98,230,192,.18);
+  background:linear-gradient(145deg,rgba(98,230,192,.045),rgba(10,16,28,.96));
+}
+
+.memory-item{
+  border-left:2px solid var(--accent);
+  padding:11px 13px;
+  margin-bottom:9px;
+  background:rgba(98,230,192,.025);
+  border-radius:0 9px 9px 0;
+}
+
+.memory-item:last-child{
+  margin-bottom:0;
+}
+
+.memory-meta{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  color:var(--muted);
+  font-size:9px;
+  margin-bottom:5px;
+}
+
+.memory-score{
+  color:var(--accent);
+}
+
+.memory-text{
+  color:#c9d6e8;
+  font-size:11px;
+  line-height:1.55;
+  white-space:pre-wrap;
+}
+
+.empty{
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.6;
+}
+
+/* STEPS */
+
+.steps{
+  counter-reset:step;
+  display:grid;
+  gap:8px;
+}
+
+.step{
+  display:flex;
+  gap:11px;
+  padding:10px 11px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:rgba(7,12,21,.45);
+}
+
+.step-num{
+  flex:0 0 22px;
+  height:22px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  color:var(--accent);
+  background:rgba(98,230,192,.08);
+  font-size:9px;
+  font-weight:900;
+}
+
+.step-text{
+  color:#bdcadd;
+  font-size:11px;
+  line-height:1.5;
+}
+
+/* IMPACT */
+
+.impact{
+  border:1px solid rgba(101,168,255,.2);
+  background:rgba(101,168,255,.035);
+}
+
+.impact-text{
+  color:#b8c7dc;
+  font-size:11px;
+  line-height:1.6;
+}
+
+.callout{
+  margin-top:10px;
+  padding:10px 11px;
+  border-radius:9px;
+  border:1px solid rgba(244,201,107,.18);
+  background:rgba(244,201,107,.035);
+  color:#cdbd91;
+  font-size:10px;
+  line-height:1.5;
+}
+
+/* RETAIN */
+
+.retain-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+
+.footer{
+  color:#586980;
+  font-size:10px;
+  line-height:1.6;
+  margin-top:20px;
+  text-align:center;
+}
+
+@media(max-width:1050px){
+  .main-grid{grid-template-columns:1fr}
+}
+
+@media(max-width:720px){
+  .shell{width:min(100% - 22px,1440px)}
+  .flow,.two-col,.retain-grid{grid-template-columns:1fr}
+  .header{align-items:flex-start;flex-direction:column}
+  .hero h1{letter-spacing:-1.5px}
+}
+</style>
+</head>
+
+<body>
+<div class="shell">
+
+<header class="header">
+  <div class="brand">
+    <div class="logo">S</div>
+    <div>
+      <div class="brand-name">Sentinel</div>
+      <div class="brand-sub">Memory-Driven Incident Response</div>
+    </div>
+  </div>
+
+  <div class="memory-status">
+    <span class="dot" id="statusDot"></span>
+    <span id="mode">Checking memory…</span>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="eyebrow">Engineering · DevOps · Incident Intelligence</div>
+  <h1>Every incident leaves a trace.<br><span>Sentinel remembers.</span></h1>
+  <p>
+    Investigate incidents with historical context from confirmed outcomes.
+    Sentinel uses persistent memory to change what it investigates first —
+    while keeping engineers in control of the final diagnosis.
+  </p>
+</section>
+
+<div class="flow">
+  <div class="flow-step active">
+    <div class="flow-num">01 · INVESTIGATE</div>
+    <div class="flow-title">Cold-start incident</div>
+    <div class="flow-desc">Generate hypotheses from current evidence.</div>
+  </div>
+  <div class="flow-step active">
+    <div class="flow-num">02 · LEARN</div>
+    <div class="flow-title">Engineer confirms outcome</div>
+    <div class="flow-desc">Root cause and resolution become memory.</div>
+  </div>
+  <div class="flow-step active">
+    <div class="flow-num">03 · RECALL</div>
+    <div class="flow-title">Similar incident returns</div>
+    <div class="flow-desc">Historical experience changes investigation order.</div>
+  </div>
+</div>
+
+<div class="main-grid">
+
+<section class="card">
+  <div class="card-head">
+    <div>
+      <div class="card-label">Incident intake</div>
+      <div class="card-title">New incident</div>
+    </div>
+    <span class="badge badge-cold">ENGINEER VERIFIED</span>
+  </div>
+
+  <div class="card-body">
+
+    <div class="field">
+      <label>Service</label>
+      <input id="service" value="Checkout API">
+    </div>
+
+    <div class="field">
+      <label>Symptom</label>
+      <input id="symptom" value="Intermittent 502 Bad Gateway errors after deployment">
+    </div>
+
+    <div class="field">
+      <label>Environment</label>
+      <input id="environment" value="production">
+    </div>
+
+    <div class="field">
+      <label>Deployment / change</label>
+      <input id="deployment" value="checkout-v2.8.2 deployed 7 minutes before error spike">
+    </div>
+
+    <div class="field">
+      <label>Logs / evidence</label>
+      <textarea id="logs">gateway 502 responses increased; upstream timeout and connection pressure observed</textarea>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeIncident()">
+        Analyze incident
+      </button>
+      <button class="btn btn-secondary" onclick="fillExample()">
+        Load scenario
+      </button>
+      <button class="btn btn-secondary" onclick="resetDemo()">
+        Reset memory
+      </button>
+    </div>
+
+    <div id="status" class="status"></div>
+
+  </div>
+</section>
+
+<section class="results">
+
+  <section class="card summary">
+    <div class="summary-top">
+      <div>
+        <div class="card-label">Current investigation</div>
+        <h2 id="summaryTitle">Waiting for incident analysis</h2>
+        <div class="incident-id" id="incidentId">No active incident</div>
+      </div>
+      <div id="memoryBadge" class="badge badge-cold">COLD START</div>
+    </div>
+
+    <div id="summaryText" class="summary-text">
+      Submit an incident to generate an evidence-driven investigation plan.
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-label">AI reasoning</div>
+        <div class="card-title">Investigation hypotheses</div>
+      </div>
+      <span class="card-label">Memory-informed ordering</span>
+    </div>
+
+    <div class="card-body">
+      <div id="hypotheses" class="hypotheses">
+        <div class="empty">Hypotheses will appear after analysis.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="two-col">
+
+    <section class="card memory-card">
+      <div class="card-head">
+        <div>
+          <div class="card-label">Hindsight retrieval</div>
+          <div class="card-title">Recalled memory</div>
+        </div>
+        <span id="memoryCount" class="card-label">0 memories</span>
+      </div>
+
+      <div class="card-body" id="memories">
+        <div class="empty">
+          No historical memory has been retrieved for this incident.
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-label">Evidence correlation</div>
+          <div class="card-title">Investigation sequence</div>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div id="steps" class="steps">
+          <div class="empty">Investigation steps will appear after analysis.</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <section class="card impact">
+    <div class="card-head">
+      <div>
+        <div class="card-label">Learning signal</div>
+        <div class="card-title">What memory changed</div>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <div id="impact" class="impact-text">
+        No memory influence has been recorded for this investigation.
+      </div>
+
+      <div class="callout">
+        Historical memory is contextual evidence — not proof of the current root cause.
+        Every recommendation must be verified against the current incident.
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-label">Memory write</div>
+        <div class="card-title">Confirm the actual outcome</div>
+      </div>
+      <span class="card-label">Engineer controlled</span>
+    </div>
+
+    <div class="card-body">
+
+      <div class="retain-grid">
+
+        <div>
+          <label>Confirmed root cause</label>
+          <textarea id="cause" placeholder="What actually caused the incident?"></textarea>
+        </div>
+
+        <div>
+          <label>Confirmed resolution steps</label>
+          <textarea id="resolution" placeholder="What fixed the incident?"></textarea>
+        </div>
+
+      </div>
+
+      <div class="field" style="margin-top:13px">
+        <label>Outcome</label>
+        <input id="outcome" value="resolved">
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" onclick="resolveIncident()">
+          Retain confirmed outcome
+        </button>
+      </div>
+
+      <div id="retainStatus" class="status"></div>
+
+    </div>
+  </section>
+
+</section>
+
+</div>
+
+<div class="footer">
+  Sentinel provides investigation suggestions only. No automated remediation is performed.
+  Verify recommendations against current production evidence.
+</div>
+
+</div>
+
+<script>
+let lastIncident = null;
+
+async function api(path, body){
+  const response = await fetch(path,{
+    method: body ? 'POST' : 'GET',
+    headers:{'Content-Type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined
+  });
+
+  const data = await response.json();
+
+  if(!response.ok){
+    throw new Error(data.detail || 'Request failed');
+  }
+
+  return data;
+}
+
+async function init(){
+  try{
+    const health = await api('/api/health');
+
+    const hindsight =
+      health.memory_mode === 'hindsight' ||
+      health.memory?.mode === 'hindsight';
+
+    mode.textContent = hindsight
+      ? 'Hindsight memory connected'
+      : 'Local demo memory';
+
+    if(!hindsight){
+      statusDot.style.background = '#f4c96b';
+      statusDot.style.boxShadow = '0 0 12px #f4c96b';
+    }
+  }catch(error){
+    mode.textContent = 'API unavailable';
+    statusDot.style.background = '#ff7d8a';
+    statusDot.style.boxShadow = '0 0 12px #ff7d8a';
+  }
+}
+
+function values(){
+  return {
+    service: service.value.trim(),
+    symptom: symptom.value.trim(),
+    environment: environment.value.trim(),
+    deployment: deployment.value.trim(),
+    logs: logs.value.trim()
+  };
+}
+
+function esc(value){
+  return String(value ?? '').replace(/[&<>"']/g,character => ({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
+  }[character]));
+}
+
+function renderMemories(memories){
+
+  memoryCount.textContent =
+    `${memories.length} memor${memories.length === 1 ? 'y' : 'ies'}`;
+
+  if(!memories.length){
+    memoriesEl().innerHTML =
+      '<div class="empty">No matching historical memory was retrieved for this incident.</div>';
+    return;
+  }
+
+  memoriesEl().innerHTML = memories.map((memory,index) => {
+
+    const text =
+      typeof memory === 'string'
+        ? memory
+        : (memory.text || memory.content || JSON.stringify(memory));
+
+    const relevance =
+      typeof memory === 'object' && memory.relevance != null
+        ? `${Math.round(memory.relevance)}% contextual relevance`
+        : 'historical context';
+
+    return `
+      <div class="memory-item">
+        <div class="memory-meta">
+          <span>MEMORY ${String(index+1).padStart(2,'0')}</span>
+          <span class="memory-score">${esc(relevance)}</span>
+        </div>
+        <div class="memory-text">${esc(text)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function memoriesEl(){
+  return document.getElementById('memories');
+}
+
+function renderHypotheses(hypotheses){
+
+  if(!hypotheses || !hypotheses.length){
+    hypothesesEl().innerHTML =
+      '<div class="empty">No hypotheses returned.</div>';
+    return;
+  }
+
+  hypothesesEl().innerHTML = hypotheses.map(hypothesis => {
+
+    const memorySupport =
+      hypothesis.memory_support ||
+      hypothesis.memory_informed ||
+      hypothesis.memory_relevance != null;
+
+    const priority =
+      String(hypothesis.priority || 'medium').toLowerCase();
+
+    const title =
+      hypothesis.title ||
+      hypothesis.hypothesis ||
+      hypothesis.name ||
+      'Investigation hypothesis';
+
+    const rationale =
+      hypothesis.rationale ||
+      hypothesis.reason ||
+      hypothesis.description ||
+      '';
+
+    const relevance =
+      hypothesis.memory_relevance != null
+        ? `${Math.round(hypothesis.memory_relevance)}% relevance`
+        : null;
+
+    return `
+      <div class="hypothesis ${memorySupport ? 'memory-backed' : ''}">
+        <div class="hypothesis-top">
+          <div class="hypothesis-title">${esc(title)}</div>
+          <span class="priority ${priority}">
+            ${esc(priority)}
+          </span>
+        </div>
+
+        <div class="rationale">
+          ${esc(rationale)}
+        </div>
+
+        <div class="support-row">
+          <span class="micro">
+            Evidence: ${esc(hypothesis.evidence_support || 'unknown')}
+          </span>
+
+          <span class="micro ${memorySupport ? 'memory' : ''}">
+            ${memorySupport ? 'Historical memory informed priority' : 'No historical support'}
+          </span>
+
+          ${
+            relevance
+              ? `<span class="micro memory">${esc(relevance)}</span>`
+              : ''
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function hypothesesEl(){
+  return document.getElementById('hypotheses');
+}
+
+function renderSteps(steps){
+
+  if(!steps || !steps.length){
+    document.getElementById('steps').innerHTML =
+      '<div class="empty">No investigation sequence returned.</div>';
+    return;
+  }
+
+  document.getElementById('steps').innerHTML =
+    steps.map((step,index) => `
+      <div class="step">
+        <div class="step-num">${index+1}</div>
+        <div class="step-text">
+          ${esc(
+            typeof step === 'string'
+              ? step
+              : (step.step || step.description || JSON.stringify(step))
+          )}
+        </div>
+      </div>
+    `).join('');
+}
+
+function renderAnalysis(data){
+
+  const memoryUsed =
+    Boolean(
+      data.memory_used ||
+      data.memory_informed ||
+      (data.recalled_memories && data.recalled_memories.length)
+    );
+
+  memoryBadge.textContent =
+    memoryUsed ? 'MEMORY RECALLED' : 'COLD START';
+
+  memoryBadge.className =
+    `badge ${memoryUsed ? 'badge-memory' : 'badge-cold'}`;
+
+  summaryTitle.textContent =
+    data.summary ||
+    data.title ||
+    'Incident analysis complete';
+
+  incidentId.textContent =
+    data.incident_id
+      ? `Incident ${data.incident_id}`
+      : 'Active incident';
+
+  summaryText.textContent =
+    memoryUsed
+      ? 'Historical incident experience was retrieved and used to influence the investigation order.'
+      : 'No matching historical experience was retrieved. The investigation starts from current evidence.';
+
+  renderHypotheses(
+    data.hypotheses ||
+    data.likely_causes ||
+    []
+  );
+
+  renderSteps(
+    data.investigation_steps ||
+    []
+  );
+
+  renderMemories(
+    data.recalled_memories ||
+    []
+  );
+
+  impact.textContent =
+    data.memory_impact ||
+    (
+      memoryUsed
+        ? 'Historical memory influenced the priority and ordering of investigation steps.'
+        : 'No historical memory influenced this investigation. This run establishes a cold-start baseline.'
+    );
+
+  status.textContent =
+    memoryUsed
+      ? 'Historical context retrieved. Verify it against current evidence.'
+      : 'Cold-start analysis complete. Confirm the actual outcome to teach Sentinel.';
+}
+
+async function analyzeIncident(){
+
+  analyzeBtn.disabled = true;
+  status.textContent = 'Correlating evidence and retrieving historical memory…';
+
+  try{
+    lastIncident = await api('/api/analyze',values());
+    renderAnalysis(lastIncident);
+  }catch(error){
+    status.textContent = error.message;
+  }finally{
+    analyzeBtn.disabled = false;
+  }
+}
+
+async function resolveIncident(){
+
+  if(!lastIncident){
+    retainStatus.textContent =
+      'Analyze an incident before retaining an outcome.';
+    return;
+  }
+
+  if(!cause.value.trim() || !resolution.value.trim()){
+    retainStatus.textContent =
+      'Enter the confirmed root cause and resolution.';
+    return;
+  }
+
+  retainStatus.textContent =
+    'Writing confirmed outcome to memory…';
+
+  try{
+
+    const data = await api('/api/resolve',{
+      incident_id:lastIncident.incident_id,
+      ...values(),
+      confirmed_root_cause:cause.value.trim(),
+      resolution_steps:resolution.value.trim(),
+      outcome:outcome.value.trim(),
+      runbook:resolution.value.trim(),
+      verification_notes:'Engineer confirmed the resolution against incident evidence.'
+    });
+
+    retainStatus.textContent =
+      `Outcome retained in ${data.memory_mode || 'memory'}. Analyze a similar incident to see the learning effect.`;
+
+  }catch(error){
+    retainStatus.textContent = error.message;
+  }
+}
+
+async function resetDemo(){
+
+  try{
+    await api('/api/demo/reset',{});
+
+    status.textContent =
+      'Local demo memory reset. Sentinel is back to a cold-start state.';
+
+    memoriesEl().innerHTML =
+      '<div class="empty">Memory cleared.</div>';
+
+    memoryCount.textContent = '0 memories';
+
+    memoryBadge.textContent = 'COLD START';
+    memoryBadge.className = 'badge badge-cold';
+
+  }catch(error){
+    status.textContent = error.message;
+  }
+}
+
+function fillExample(){
+
+  service.value = 'Checkout API';
+
+  symptom.value =
+    'HTTP 502 errors increasing shortly after a deployment';
+
+  environment.value =
+    'production';
+
+  deployment.value =
+    'checkout-v2.8.2 deployed 7 minutes before the error spike';
+
+  logs.value =
+    'gateway 502 responses increased; upstream timeout and connection pressure observed';
+
+  cause.value = '';
+
+  resolution.value = '';
+
+  retainStatus.textContent = '';
+
+  status.textContent =
+    'Scenario loaded. Analyze it to retrieve any historical experience.';
+}
+
+init();
+</script>
+
+</body>
+</html>
